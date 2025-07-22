@@ -13,9 +13,19 @@ import (
 	"go.uber.org/zap"
 )
 
+var supportedSignals = map[string]syscall.Signal{
+	"HUP":  syscall.SIGHUP,
+	"INT":  syscall.SIGINT,
+	"TERM": syscall.SIGTERM,
+	"USR1": syscall.SIGUSR1,
+	"USR2": syscall.SIGUSR2,
+}
+
 func main() {
 	delay := flag.Duration("delay", 2*time.Second, "Debounce delay for path updates (default: 2s)")
 	listenAddress := flag.String("address", ":9952", "Address to listen for HTTP health and ready probes (default: :9952)")
+	processName := flag.String("process", "", "Name of process to signal on configuration updates (optional)")
+	processSignalName := flag.String("signal", "", "Signal to send to the process (default: HUP)")
 	debug := flag.Bool("debug", false, "Enable debug logging")
 	flag.Parse()
 
@@ -59,6 +69,16 @@ func main() {
 		if err := pss.SetPathConfig(pathConfig); err != nil {
 			logger.Fatal("failed to set path configuration", zap.String("path", pathConfig.SrcPath()), zap.Error(err))
 		}
+	}
+
+	// Set process signaling options
+	if *processName != "" {
+		signal, ok := supportedSignals[*processSignalName]
+		if !ok {
+			logger.Fatal("unsupported signal", zap.String("signal", *processSignalName))
+		}
+		processNotifier := i.NewProcessNotifier(*processName, signal)
+		pss.SetNotifier(processNotifier)
 	}
 
 	// Start http endpoint

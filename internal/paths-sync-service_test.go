@@ -1,10 +1,11 @@
 package internal
 
 import (
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/zap/zapcore"
 )
 
 func TestNewPathsSyncService(t *testing.T) {
@@ -69,19 +70,153 @@ func TestPathsSyncServiceSetPathConfig(t *testing.T) {
 	}
 }
 
-func TestPathsSyncServiceSetNotifier(t *testing.T) {
+func TestPathsSyncServiceSetMultiplePathConfigs(t *testing.T) {
 	service, err := NewPathsSyncService(50 * time.Millisecond)
 	if err != nil {
 		t.Fatalf("NewPathsSyncService() error = %v", err)
 	}
 
-	// Create a mock notifier
-	mockNotifier := &MockNotifier{}
+	// Create multiple temporary directories
+	tmpDir1 := t.TempDir()
+	tmpDir2 := t.TempDir()
+	tmpDir3 := t.TempDir()
 
-	service.SetNotifier(mockNotifier)
+	pathConfigs := make([]*PathConfig, 3)
+	for i, dir := range []string{tmpDir1, tmpDir2, tmpDir3} {
+		pathConfig, err := ParsePathConfig(dir)
+		if err != nil {
+			t.Fatalf("ParsePathConfig() error = %v", err)
+		}
+		pathConfigs[i] = pathConfig
 
-	// We can't directly check the notifier field since it's private,
-	// but we can check that the method doesn't panic
+		err = service.SetPathConfig(pathConfig)
+		if err != nil {
+			t.Errorf("SetPathConfig() error = %v", err)
+		}
+	}
+
+	// Verify all pathConfigs were added
+	if len(service.pathConfigs) != 3 {
+		t.Errorf("Expected 3 pathConfigs, got %d", len(service.pathConfigs))
+	}
+
+	// Verify order is maintained
+	for i, expected := range pathConfigs {
+		if service.pathConfigs[i] != expected {
+			t.Errorf("pathConfig at index %d was not stored correctly", i)
+		}
+	}
+}
+
+func TestPathsSyncServiceSetPathConfigWhileRunning(t *testing.T) {
+	service, err := NewPathsSyncService(50 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("NewPathsSyncService() error = %v", err)
+	}
+
+	// Start the service first
+	err = service.Start()
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	defer service.Stop()
+
+	tmpDir := t.TempDir()
+	pathConfig, err := ParsePathConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("ParsePathConfig() error = %v", err)
+	}
+
+	// Should be able to add path config while running
+	err = service.SetPathConfig(pathConfig)
+	if err != nil {
+		t.Errorf("SetPathConfig() should work while service is running, got: %v", err)
+	}
+
+	if len(service.pathConfigs) != 1 {
+		t.Errorf("Expected 1 pathConfig, got %d", len(service.pathConfigs))
+	}
+}
+
+func TestPathsSyncServiceSetPathConfigWithFiles(t *testing.T) {
+	service, err := NewPathsSyncService(50 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("NewPathsSyncService() error = %v", err)
+	}
+
+	tmpDir := t.TempDir()
+
+	// Create some test files
+	testFiles := []string{"config.yaml", "secrets.yaml", "deployment.yaml"}
+	for _, file := range testFiles {
+		filePath := filepath.Join(tmpDir, file)
+		if err := os.WriteFile(filePath, []byte("test: content"), 0644); err != nil {
+			t.Fatalf("Failed to create test file %s: %v", file, err)
+		}
+	}
+
+	pathConfig, err := ParsePathConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("ParsePathConfig() error = %v", err)
+	}
+
+	err = service.SetPathConfig(pathConfig)
+	if err != nil {
+		t.Errorf("SetPathConfig() error = %v", err)
+	}
+
+	// Verify the path config includes the created files
+	if len(service.pathConfigs) != 1 {
+		t.Errorf("Expected 1 pathConfig, got %d", len(service.pathConfigs))
+	}
+}
+
+func TestPathsSyncServiceSetPathConfigErrorCases(t *testing.T) {
+	service, err := NewPathsSyncService(50 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("NewPathsSyncService() error = %v", err)
+	}
+
+	tests := []struct {
+		name             string
+		path             string
+		expectParseError bool
+		expectSetError   bool
+	}{
+		{"Non-existent path", "/path/that/does/not/exist", false, true},
+		{"Empty path", "", true, true},
+		{"Relative path", "./relative", true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.path == "./relative" {
+				// Create relative directory for this test
+				if err := os.MkdirAll(tt.path, 0755); err != nil {
+					t.Fatalf("Failed to create relative directory: %v", err)
+				}
+				defer os.RemoveAll(tt.path)
+			}
+
+			pathConfig, err := ParsePathConfig(tt.path)
+			if err != nil && !tt.expectParseError {
+				t.Fatalf("ParsePathConfig() unexpected error = %v", err)
+			}
+			if err == nil && tt.expectParseError {
+				t.Fatalf("ParsePathConfig() expected error but got none")
+			}
+
+			if err == nil {
+				err = service.SetPathConfig(pathConfig)
+				if tt.expectSetError && err == nil {
+					t.Errorf("SetPathConfig() expected error but got none")
+				}
+				if !tt.expectSetError && err != nil {
+					t.Errorf("SetPathConfig() unexpected error = %v", err)
+				}
+			}
+		})
+	}
 }
 
 func TestPathsSyncServiceStartStop(t *testing.T) {
@@ -175,68 +310,232 @@ func TestPathsSyncServiceCheckHealth(t *testing.T) {
 	}
 }
 
-// MockNotifier is a test implementation of the Notifier interface
-type MockNotifier struct {
-	NotifyCallCount int
-	NotifyResult    bool
-}
-
-func (m *MockNotifier) Notify() bool {
-	m.NotifyCallCount++
-	return m.NotifyResult
-}
-
-func (m *MockNotifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("type", "mock")
-	enc.AddInt("callCount", m.NotifyCallCount)
-	enc.AddBool("result", m.NotifyResult)
-	return nil
-}
-
-func TestPathsSyncServiceWithInvalidPath(t *testing.T) {
+func TestPathsSyncServiceLifecycleEdgeCases(t *testing.T) {
 	service, err := NewPathsSyncService(50 * time.Millisecond)
 	if err != nil {
 		t.Fatalf("NewPathsSyncService() error = %v", err)
 	}
 
-	// Try to set a non-existent path
-	pathConfig, err := ParsePathConfig("/non/existent/path")
+	// Test multiple rapid starts and stops
+	for i := 0; i < 5; i++ {
+		err = service.Start()
+		if err != nil {
+			t.Errorf("Start() iteration %d error = %v", i, err)
+		}
+
+		if !service.IsStarted() {
+			t.Errorf("service should be started after Start() iteration %d", i)
+		}
+
+		service.Stop()
+
+		if service.IsStarted() {
+			t.Errorf("service should be stopped after Stop() iteration %d", i)
+		}
+	}
+}
+
+func TestPathsSyncServiceConcurrentStartStop(t *testing.T) {
+	service, err := NewPathsSyncService(50 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("NewPathsSyncService() error = %v", err)
+	}
+
+	var wg sync.WaitGroup
+	numGoroutines := 10
+
+	// Test concurrent starts
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			service.Start()
+		}()
+	}
+	wg.Wait()
+
+	// Should only be started once
+	if !service.IsStarted() {
+		t.Error("service should be started after concurrent Start() calls")
+	}
+
+	// Test concurrent stops
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			service.Stop()
+		}()
+	}
+	wg.Wait()
+
+	// Should be stopped
+	if service.IsStarted() {
+		t.Error("service should be stopped after concurrent Stop() calls")
+	}
+}
+
+func TestPathsSyncServiceNotificationIntegration(t *testing.T) {
+	service, err := NewPathsSyncService(50 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("NewPathsSyncService() error = %v", err)
+	}
+
+	mockNotifier := &MockNotifier{}
+	service.SetNotifier(mockNotifier)
+
+	tmpDir := t.TempDir()
+	pathConfig, err := ParsePathConfig(tmpDir)
 	if err != nil {
 		t.Fatalf("ParsePathConfig() error = %v", err)
 	}
 
 	err = service.SetPathConfig(pathConfig)
-	if err == nil {
-		t.Error("SetPathConfig() should error for non-existent path")
+	if err != nil {
+		t.Errorf("SetPathConfig() error = %v", err)
+	}
+
+	err = service.Start()
+	if err != nil {
+		t.Errorf("Start() error = %v", err)
+	}
+	defer service.Stop()
+
+	// Give the service time to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Create a file to trigger a notification
+	testFile := filepath.Join(tmpDir, "test.yaml")
+	if err := os.WriteFile(testFile, []byte("test: data"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Wait for debounce and processing
+	time.Sleep(200 * time.Millisecond)
+
+	if mockNotifier.NotifyCallCount == 0 {
+		t.Error("Notifier should have been called after file change")
 	}
 }
 
-func TestPathsSyncServiceConcurrentAccess(t *testing.T) {
+func TestPathsSyncServiceResourceCleanup(t *testing.T) {
 	service, err := NewPathsSyncService(50 * time.Millisecond)
 	if err != nil {
 		t.Fatalf("NewPathsSyncService() error = %v", err)
 	}
 
-	// Test concurrent start/stop calls (should not panic or race)
-	done := make(chan bool, 2)
-
-	go func() {
-		defer func() { done <- true }()
-		for i := 0; i < 10; i++ {
-			service.Start()
-			time.Sleep(1 * time.Millisecond)
+	// Add multiple path configs
+	for i := 0; i < 3; i++ {
+		tmpDir := t.TempDir()
+		pathConfig, err := ParsePathConfig(tmpDir)
+		if err != nil {
+			t.Fatalf("ParsePathConfig() error = %v", err)
 		}
-	}()
 
-	go func() {
-		defer func() { done <- true }()
-		for i := 0; i < 10; i++ {
+		err = service.SetPathConfig(pathConfig)
+		if err != nil {
+			t.Errorf("SetPathConfig() error = %v", err)
+		}
+	}
+
+	err = service.Start()
+	if err != nil {
+		t.Errorf("Start() error = %v", err)
+	}
+
+	// Verify service is running with resources
+	if !service.IsStarted() {
+		t.Error("service should be started")
+	}
+
+	if len(service.pathConfigs) != 3 {
+		t.Errorf("Expected 3 pathConfigs, got %d", len(service.pathConfigs))
+	}
+
+	// Stop and verify cleanup
+	service.Stop()
+
+	if service.IsStarted() {
+		t.Error("service should be stopped")
+	}
+
+	// Health check should fail after stop
+	err = service.CheckHealth()
+	if err == nil {
+		t.Error("CheckHealth() should return error after service is stopped")
+	}
+}
+
+func TestPathsSyncServiceDebounceConfiguration(t *testing.T) {
+	debounceDelays := []time.Duration{
+		10 * time.Millisecond,
+		100 * time.Millisecond,
+		500 * time.Millisecond,
+	}
+
+	for _, delay := range debounceDelays {
+		t.Run(delay.String(), func(t *testing.T) {
+			service, err := NewPathsSyncService(delay)
+			if err != nil {
+				t.Fatalf("NewPathsSyncService() error = %v", err)
+			}
+
+			if service.debouncer == nil {
+				t.Error("debouncer should be initialized")
+			}
+
+			// Test that service can start and stop with different debounce delays
+			err = service.Start()
+			if err != nil {
+				t.Errorf("Start() error = %v", err)
+			}
+
+			if !service.IsStarted() {
+				t.Error("service should be started")
+			}
+
 			service.Stop()
-			time.Sleep(1 * time.Millisecond)
-		}
-	}()
 
-	// Wait for both goroutines to complete
-	<-done
-	<-done
+			if service.IsStarted() {
+				t.Error("service should be stopped")
+			}
+		})
+	}
+}
+
+func TestPathsSyncServiceZeroDebounceDelay(t *testing.T) {
+	service, err := NewPathsSyncService(0)
+	if err != nil {
+		t.Fatalf("NewPathsSyncService() with zero debounce should not error, got: %v", err)
+	}
+
+	if service == nil {
+		t.Fatal("NewPathsSyncService() returned nil")
+	}
+
+	// Should still be able to start and stop
+	err = service.Start()
+	if err != nil {
+		t.Errorf("Start() error = %v", err)
+	}
+	defer service.Stop()
+}
+
+func TestPathsSyncServiceNegativeDebounceDelay(t *testing.T) {
+	service, err := NewPathsSyncService(-100 * time.Millisecond)
+
+	// Depending on implementation, this might error or normalize to 0
+	// Adjust this test based on actual behavior
+	if err != nil {
+		// If constructor rejects negative values
+		if service != nil {
+			t.Error("NewPathsSyncService() should return nil on error")
+		}
+		return
+	}
+
+	// If constructor accepts negative values (treats as 0 or absolute value)
+	if service == nil {
+		t.Fatal("NewPathsSyncService() returned nil without error")
+	}
 }

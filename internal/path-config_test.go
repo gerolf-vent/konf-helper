@@ -371,6 +371,15 @@ func TestPathConfigString(t *testing.T) {
 			want: "/etc/config:*:/tmp/config:1000",
 		},
 		{
+			name: "srcPath, dstPath, owner",
+			pc: PathConfig{
+				srcPath: "/etc/config",
+				owner:   1000,
+				isSet:   0x04,
+			},
+			want: "/etc/config:*::1000",
+		},
+		{
 			name: "srcPath, dstPath, owner, group",
 			pc: PathConfig{
 				srcPath: "/etc/config",

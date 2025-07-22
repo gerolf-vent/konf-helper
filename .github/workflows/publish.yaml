@@ -11,6 +11,7 @@ on:
       - internal/**
       - go.mod
       - go.sum
+      - '!**_test.go'
 jobs:
   build:
     name: Publish container image

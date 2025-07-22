@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -200,5 +201,183 @@ service_name: myapp-production`
 	got := buf.String()
 	if got != expected {
 		t.Errorf("Patch() = %v, want %v", got, expected)
+	}
+}
+
+func TestPatchEngineAllowDenyPath(t *testing.T) {
+	pe := NewPatchEngine()
+
+	// Test AllowPath
+	pe.AllowPath("/tmp")
+	pe.AllowPath("/etc")
+
+	// Test DenyPath
+	pe.DenyPath("/tmp")
+
+	// We can't easily test the internal state, but we can test that the methods don't panic
+	// and that they affect the readFile function behavior
+}
+
+func TestPatchEngineReadFileFunction(t *testing.T) {
+	pe := NewPatchEngine()
+	pe.AllowPath("/tmp")
+	pe.SetData(map[string]interface{}{})
+
+	// Create a temporary file for testing
+	tmpDir := t.TempDir()
+	testFile := tmpDir + "/test.txt"
+	testContent := "Hello, World!"
+
+	if err := os.WriteFile(testFile, []byte(testContent), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Allow the temp directory
+	pe.AllowPath(tmpDir)
+
+	tests := []struct {
+		name        string
+		template    string
+		wantErr     bool
+		wantContent string
+		wantErrMsg  string
+	}{
+		{
+			name:        "read allowed file",
+			template:    `{{readFile "` + testFile + `"}}`,
+			wantErr:     false,
+			wantContent: testContent,
+		},
+		{
+			name:       "read from disallowed path",
+			template:   `{{readFile "/etc/passwd"}}`,
+			wantErr:    true,
+			wantErrMsg: "path is not allowed",
+		},
+		{
+			name:       "read relative path",
+			template:   `{{readFile "relative/path.txt"}}`,
+			wantErr:    true,
+			wantErrMsg: "path is not absolute",
+		},
+		{
+			name:       "read hidden file",
+			template:   `{{readFile "` + tmpDir + `/.hidden"}}`,
+			wantErr:    true,
+			wantErrMsg: "reading from hidden files is prohibited",
+		},
+		{
+			name:       "read non-existent file from allowed path",
+			template:   `{{readFile "` + tmpDir + `/nonexistent.txt"}}`,
+			wantErr:    true,
+			wantErrMsg: "failed to read file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := strings.NewReader(tt.template)
+			var buf bytes.Buffer
+
+			err := pe.Patch(reader, &buf)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Patch() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr {
+				if tt.wantErrMsg != "" && !strings.Contains(err.Error(), tt.wantErrMsg) {
+					t.Errorf("Patch() error = %v, want error containing %v", err, tt.wantErrMsg)
+				}
+			} else {
+				got := buf.String()
+				if got != tt.wantContent {
+					t.Errorf("Patch() = %v, want %v", got, tt.wantContent)
+				}
+			}
+		})
+	}
+}
+
+func TestPatchEngineWriterError(t *testing.T) {
+	pe := NewPatchEngine()
+	pe.SetData(map[string]string{"name": "test"})
+
+	template := "Hello {{.name}}!"
+	reader := strings.NewReader(template)
+
+	// Create a writer that will return an error
+	errorWriter := &errorWriter{}
+
+	err := pe.Patch(reader, errorWriter)
+	if err == nil {
+		t.Error("Patch() should return error when writer fails")
+	}
+}
+
+// errorWriter is a helper that always returns an error on Write
+type errorWriter struct{}
+
+func (ew *errorWriter) Write(p []byte) (n int, err error) {
+	return 0, bytes.ErrTooLarge
+}
+
+func TestPatchEngineSprigFunctions(t *testing.T) {
+	pe := NewPatchEngine()
+
+	tests := []struct {
+		name     string
+		template string
+		data     interface{}
+		want     string
+	}{
+		{
+			name:     "upper function",
+			template: `{{.text | upper}}`,
+			data:     map[string]string{"text": "hello"},
+			want:     "HELLO",
+		},
+		{
+			name:     "lower function",
+			template: `{{.text | lower}}`,
+			data:     map[string]string{"text": "HELLO"},
+			want:     "hello",
+		},
+		{
+			name:     "default function",
+			template: `{{.missing | default "fallback"}}`,
+			data:     map[string]string{},
+			want:     "fallback",
+		},
+		{
+			name:     "quote function",
+			template: `{{.text | quote}}`,
+			data:     map[string]string{"text": "hello world"},
+			want:     `"hello world"`,
+		},
+		{
+			name:     "trim function",
+			template: `{{.text | trim}}`,
+			data:     map[string]string{"text": "  hello  "},
+			want:     "hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pe.SetData(tt.data)
+			reader := strings.NewReader(tt.template)
+			var buf bytes.Buffer
+
+			err := pe.Patch(reader, &buf)
+			if err != nil {
+				t.Fatalf("Patch() error = %v", err)
+			}
+
+			got := buf.String()
+			if got != tt.want {
+				t.Errorf("Patch() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

@@ -319,3 +319,73 @@ func TestContainerProcessDiscovery(t *testing.T) {
 		}
 	})
 }
+
+func TestProcessNotifyerMarshalLogObject(t *testing.T) {
+	tests := []struct {
+		name        string
+		processName string
+		signal      syscall.Signal
+		want        map[string]interface{}
+	}{
+		{
+			name:        "SIGUSR1",
+			processName: "test-process",
+			signal:      syscall.SIGUSR1,
+			want: map[string]interface{}{
+				"process-name": "test-process",
+				"signal":       "user defined signal 1",
+			},
+		},
+		{
+			name:        "SIGTERM",
+			processName: "another-process",
+			signal:      syscall.SIGTERM,
+			want: map[string]interface{}{
+				"process-name": "another-process",
+				"signal":       "terminated",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pn := NewProcessNotifyer(tt.processName, tt.signal)
+			enc := NewMockObjectEncoder()
+
+			err := pn.MarshalLogObject(enc)
+			if err != nil {
+				t.Fatalf("MarshalLogObject() error = %v", err)
+			}
+
+			for key, expectedValue := range tt.want {
+				if actualValue, exists := enc.Fields[key]; !exists {
+					t.Errorf("Expected field %s not found", key)
+				} else if actualValue != expectedValue {
+					t.Errorf("Field %s: got %v, want %v", key, actualValue, expectedValue)
+				}
+			}
+
+			// Check that no unexpected fields are present
+			for key := range enc.Fields {
+				if _, expected := tt.want[key]; !expected {
+					t.Errorf("Unexpected field %s with value %v", key, enc.Fields[key])
+				}
+			}
+		})
+	}
+}
+
+func TestProcessNotifyerGetters(t *testing.T) {
+	processName := "test-process"
+	signal := syscall.SIGUSR2
+
+	pn := NewProcessNotifyer(processName, signal)
+
+	if got := pn.ProcessName(); got != processName {
+		t.Errorf("ProcessName() = %v, want %v", got, processName)
+	}
+
+	if got := pn.Signal(); got != signal {
+		t.Errorf("Signal() = %v, want %v", got, signal)
+	}
+}

@@ -248,3 +248,66 @@ func TestDebouncerTimerCleanup(t *testing.T) {
 		t.Error("Function should have been called")
 	}
 }
+
+func TestDebouncerWithNilFunction(t *testing.T) {
+	delay := 10 * time.Millisecond
+	debouncer := NewDebouncer(delay)
+
+	// This should not panic and should not set a timer
+	debouncer.Call(nil)
+
+	// Verify timer is not set
+	debouncer.mu.Lock()
+	timer := debouncer.timer
+	debouncer.mu.Unlock()
+
+	if timer != nil {
+		t.Error("Timer should not be set for nil function")
+	}
+
+	// Wait for the delay - nothing should happen
+	time.Sleep(delay + 5*time.Millisecond)
+
+	// Test passes if no panic occurred
+}
+
+func TestDebouncerStopsPreviousTimer(t *testing.T) {
+	delay := 100 * time.Millisecond
+	debouncer := NewDebouncer(delay)
+
+	callCount := 0
+	var mu sync.Mutex
+
+	fn1 := func() {
+		mu.Lock()
+		callCount += 1
+		mu.Unlock()
+	}
+
+	fn2 := func() {
+		mu.Lock()
+		callCount += 10
+		mu.Unlock()
+	}
+
+	// Start first function
+	debouncer.Call(fn1)
+
+	// Wait a bit but not the full delay
+	time.Sleep(delay / 3)
+
+	// Start second function - should cancel first
+	debouncer.Call(fn2)
+
+	// Wait for second function to execute
+	time.Sleep(delay + 10*time.Millisecond)
+
+	mu.Lock()
+	finalCount := callCount
+	mu.Unlock()
+
+	// Should only have executed fn2 (adds 10), fn1 (adds 1) should have been cancelled
+	if finalCount != 10 {
+		t.Errorf("Expected callCount to be 10 (only fn2), but got %d", finalCount)
+	}
+}

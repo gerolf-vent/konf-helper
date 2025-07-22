@@ -17,7 +17,9 @@ func (d *Debouncer) Call(fn func()) {
 	if d.timer != nil {
 		d.timer.Stop()
 	}
-	d.timer = time.AfterFunc(d.delay, fn)
+	if fn != nil {
+		d.timer = time.AfterFunc(d.delay, fn)
+	}
 }
 
 func NewDebouncer(delay time.Duration) *Debouncer {

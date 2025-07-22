@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  go-test:
+    image: cgr.dev/chainguard/go:latest
+    command: test ./...
+    working_dir: /src
+    volumes:
+      - .:/src

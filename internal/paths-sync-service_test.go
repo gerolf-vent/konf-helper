@@ -69,18 +69,18 @@ func TestPathsSyncServiceSetPathConfig(t *testing.T) {
 	}
 }
 
-func TestPathsSyncServiceSetNotifyer(t *testing.T) {
+func TestPathsSyncServiceSetNotifier(t *testing.T) {
 	service, err := NewPathsSyncService(50 * time.Millisecond)
 	if err != nil {
 		t.Fatalf("NewPathsSyncService() error = %v", err)
 	}
 
-	// Create a mock notifyer
-	mockNotifyer := &MockNotifyer{}
+	// Create a mock notifier
+	mockNotifier := &MockNotifier{}
 
-	service.SetNotifyer(mockNotifyer)
+	service.SetNotifier(mockNotifier)
 
-	// We can't directly check the notifyer field since it's private,
+	// We can't directly check the notifier field since it's private,
 	// but we can check that the method doesn't panic
 }
 
@@ -175,18 +175,18 @@ func TestPathsSyncServiceCheckHealth(t *testing.T) {
 	}
 }
 
-// MockNotifyer is a test implementation of the Notifyer interface
-type MockNotifyer struct {
+// MockNotifier is a test implementation of the Notifier interface
+type MockNotifier struct {
 	NotifyCallCount int
 	NotifyResult    bool
 }
 
-func (m *MockNotifyer) Notify() bool {
+func (m *MockNotifier) Notify() bool {
 	m.NotifyCallCount++
 	return m.NotifyResult
 }
 
-func (m *MockNotifyer) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+func (m *MockNotifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("type", "mock")
 	enc.AddInt("callCount", m.NotifyCallCount)
 	enc.AddBool("result", m.NotifyResult)

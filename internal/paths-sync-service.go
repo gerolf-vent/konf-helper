@@ -21,7 +21,7 @@ type PathsSyncService struct {
 	pathConfigs []*PathConfig
 	fsWatcher   *fsnotify.Watcher
 	patchEngine *PatchEngine
-	notifyer    Notifyer
+	notifier    Notifier
 	debouncer   *Debouncer
 
 	isStarted  bool
@@ -67,11 +67,11 @@ func (pss *PathsSyncService) SetPathConfig(pathConfig *PathConfig) error {
 	return nil
 }
 
-func (pss *PathsSyncService) SetNotifyer(notifyer Notifyer) {
+func (pss *PathsSyncService) SetNotifier(notifier Notifier) {
 	pss.mu.Lock()
 	defer pss.mu.Unlock()
-	pss.notifyer = notifyer
-	pss.logger.Debug("set notifyer", zap.Object("notifyer", notifyer))
+	pss.notifier = notifier
+	pss.logger.Debug("set notifier", zap.Object("notifier", notifier))
 }
 
 func (pss *PathsSyncService) Start() error {
@@ -201,15 +201,15 @@ func (pss *PathsSyncService) watch() {
 					pss.logger.Info("successfully synced paths")
 				}
 
-				if pss.notifyer != nil {
-					notifyOK := pss.notifyer.Notify()
+				if pss.notifier != nil {
+					notifyOK := pss.notifier.Notify()
 					if !notifyOK {
 						pss.logger.Error("failed to notify process",
-							zap.Object("notifyer", pss.notifyer),
+							zap.Object("notifier", pss.notifier),
 						)
 					} else {
 						pss.logger.Info("successfully notified process",
-							zap.Object("notifyer", pss.notifyer),
+							zap.Object("notifier", pss.notifier),
 						)
 					}
 				}

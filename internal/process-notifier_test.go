@@ -9,14 +9,14 @@ import (
 	"testing"
 )
 
-func TestNewProcessNotifyer(t *testing.T) {
+func TestNewProcessNotifier(t *testing.T) {
 	processName := "test-process"
 	signal := syscall.SIGUSR1
 
-	pn := NewProcessNotifyer(processName, signal)
+	pn := NewProcessNotifier(processName, signal)
 
 	if pn == nil {
-		t.Fatal("NewProcessNotifyer() returned nil")
+		t.Fatal("NewProcessNotifier() returned nil")
 	}
 	if pn.processName != processName {
 		t.Errorf("processName = %v, want %v", pn.processName, processName)
@@ -28,7 +28,7 @@ func TestNewProcessNotifyer(t *testing.T) {
 
 func TestFindPIDNotFound(t *testing.T) {
 	// Use a process name that definitely won't exist
-	pn := NewProcessNotifyer("non-existent-process-name-12345", syscall.SIGUSR1)
+	pn := NewProcessNotifier("non-existent-process-name-12345", syscall.SIGUSR1)
 
 	pid, err := pn.findPID()
 	if err == nil {
@@ -52,7 +52,7 @@ func TestFindPIDCurrentProcess(t *testing.T) {
 	}
 
 	processName := strings.TrimSpace(string(commData))
-	pn := NewProcessNotifyer(processName, syscall.SIGUSR1)
+	pn := NewProcessNotifier(processName, syscall.SIGUSR1)
 
 	pid, err := pn.findPID()
 	if err != nil {
@@ -66,7 +66,7 @@ func TestFindPIDCurrentProcess(t *testing.T) {
 }
 
 func TestNotifyNonExistentProcess(t *testing.T) {
-	pn := NewProcessNotifyer("non-existent-process", syscall.SIGUSR1)
+	pn := NewProcessNotifier("non-existent-process", syscall.SIGUSR1)
 
 	ok := pn.Notify()
 	if ok {
@@ -84,7 +84,7 @@ func TestNotifyCurrentProcess(t *testing.T) {
 	processName := strings.TrimSpace(string(commData))
 
 	// Use a harmless signal that we can safely send to ourselves
-	pn := NewProcessNotifyer(processName, syscall.Signal(0)) // Signal 0 is a null signal
+	pn := NewProcessNotifier(processName, syscall.Signal(0)) // Signal 0 is a null signal
 
 	ok := pn.Notify()
 	if !ok {
@@ -94,8 +94,8 @@ func TestNotifyCurrentProcess(t *testing.T) {
 
 func TestFindPIDWithInvalidProcDir(t *testing.T) {
 	// This test is tricky because we can't easily mock the filesystem
-	// We'll test by creating a ProcessNotifyer and testing edge cases
-	pn := NewProcessNotifyer("init", syscall.SIGUSR1)
+	// We'll test by creating a ProcessNotifier and testing edge cases
+	pn := NewProcessNotifier("init", syscall.SIGUSR1)
 
 	// Test that we can at least call findPID without panicking
 	_, err := pn.findPID()
@@ -130,7 +130,7 @@ func TestFindPIDErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pn := NewProcessNotifyer(tt.processName, syscall.SIGUSR1)
+			pn := NewProcessNotifier(tt.processName, syscall.SIGUSR1)
 			_, err := pn.findPID()
 
 			if tt.expectError && err == nil {
@@ -171,7 +171,7 @@ func TestFindPIDInContainer(t *testing.T) {
 		initProcessName := strings.TrimSpace(string(commData))
 		t.Logf("Container init process (PID 1): %s", initProcessName)
 
-		pn := NewProcessNotifyer(initProcessName, syscall.SIGUSR1)
+		pn := NewProcessNotifier(initProcessName, syscall.SIGUSR1)
 		pid, err := pn.findPID()
 
 		if err != nil {
@@ -191,7 +191,7 @@ func TestFindPIDInContainer(t *testing.T) {
 		currentProcessName := strings.TrimSpace(string(commData))
 		currentPID := os.Getpid()
 
-		pn := NewProcessNotifyer(currentProcessName, syscall.SIGUSR1)
+		pn := NewProcessNotifier(currentProcessName, syscall.SIGUSR1)
 		foundPID, err := pn.findPID()
 
 		if err != nil {
@@ -227,7 +227,7 @@ func TestNotifyInContainer(t *testing.T) {
 	}
 
 	currentProcessName := strings.TrimSpace(string(commData))
-	pn := NewProcessNotifyer(currentProcessName, syscall.SIGUSR1)
+	pn := NewProcessNotifier(currentProcessName, syscall.SIGUSR1)
 
 	// This should work without error (sending signal to self)
 	if ok := pn.Notify(); !ok {
@@ -320,7 +320,7 @@ func TestContainerProcessDiscovery(t *testing.T) {
 	})
 }
 
-func TestProcessNotifyerMarshalLogObject(t *testing.T) {
+func TestProcessNotifierMarshalLogObject(t *testing.T) {
 	tests := []struct {
 		name        string
 		processName string
@@ -349,7 +349,7 @@ func TestProcessNotifyerMarshalLogObject(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pn := NewProcessNotifyer(tt.processName, tt.signal)
+			pn := NewProcessNotifier(tt.processName, tt.signal)
 			enc := NewMockObjectEncoder()
 
 			err := pn.MarshalLogObject(enc)
@@ -375,11 +375,11 @@ func TestProcessNotifyerMarshalLogObject(t *testing.T) {
 	}
 }
 
-func TestProcessNotifyerGetters(t *testing.T) {
+func TestProcessNotifierGetters(t *testing.T) {
 	processName := "test-process"
 	signal := syscall.SIGUSR2
 
-	pn := NewProcessNotifyer(processName, signal)
+	pn := NewProcessNotifier(processName, signal)
 
 	if got := pn.ProcessName(); got != processName {
 		t.Errorf("ProcessName() = %v, want %v", got, processName)

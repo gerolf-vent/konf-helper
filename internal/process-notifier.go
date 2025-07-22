@@ -12,15 +12,15 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-type ProcessNotifyer struct {
+type ProcessNotifier struct {
 	processName string
 	signal      syscall.Signal
 
 	logger *zap.Logger
 }
 
-func NewProcessNotifyer(processName string, signal syscall.Signal) *ProcessNotifyer {
-	return &ProcessNotifyer{
+func NewProcessNotifier(processName string, signal syscall.Signal) *ProcessNotifier {
+	return &ProcessNotifier{
 		processName: processName,
 		signal:      signal,
 
@@ -30,15 +30,15 @@ func NewProcessNotifyer(processName string, signal syscall.Signal) *ProcessNotif
 	}
 }
 
-func (pn *ProcessNotifyer) ProcessName() string {
+func (pn *ProcessNotifier) ProcessName() string {
 	return pn.processName
 }
 
-func (pn *ProcessNotifyer) Signal() syscall.Signal {
+func (pn *ProcessNotifier) Signal() syscall.Signal {
 	return pn.signal
 }
 
-func (pn *ProcessNotifyer) Notify() bool {
+func (pn *ProcessNotifier) Notify() bool {
 	pid, err := pn.findPID()
 	if err != nil {
 		pn.logger.Error("Failed to find process PID", zap.Error(err))
@@ -60,13 +60,13 @@ func (pn *ProcessNotifyer) Notify() bool {
 	return true
 }
 
-func (pn *ProcessNotifyer) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+func (pn *ProcessNotifier) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("process-name", pn.processName)
 	enc.AddString("signal", pn.signal.String())
 	return nil
 }
 
-func (pn *ProcessNotifyer) findPID() (int, error) {
+func (pn *ProcessNotifier) findPID() (int, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return 0, err

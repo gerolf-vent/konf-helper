@@ -2,7 +2,7 @@ package internal
 
 import "go.uber.org/zap/zapcore"
 
-type Notifyer interface {
+type Notifier interface {
 	zapcore.ObjectMarshaler
 	Notify() bool
 }

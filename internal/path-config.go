@@ -79,7 +79,7 @@ func ParsePathConfig(spec string) (*PathConfig, error) {
 		if mode > 0777 {
 			return nil, fmt.Errorf("mode %04o is out of range, must be 0 to 0777", mode)
 		}
-		isSet |= 0x1 // Mode is set
+		isSet |= 0x10 // Mode is set
 	}
 
 	if isSet&0x1c != 0 && isSet&0x2 == 0 {

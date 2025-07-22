@@ -182,6 +182,9 @@ Both endpoints return:
 
 ## Process Notification
 
+> [!IMPORTANT]  
+> For process signaling to work, `shareProcessNamespace` must be set to `true` in the Pod spec. Otherwise, the sidecar can't find the PID of the process you are specifying.
+
 Konf-helper can notify processes when configurations change by sending Unix signals via command line flags:
 
 ```bash
@@ -208,14 +211,12 @@ Konf-helper implements a robust file synchronization pattern inspired by Kuberne
 
 ```bash
 # Build binary
-go build -o konf-helper ./cmd/konf-helper
-
-# Run tests
-go test ./...
-
-# Build container image
-docker build -t konf-helper .
+go build -o konf-helper ./cmd/konf-helper/main.go
 ```
+
+## Testing
+
+You can use `docker-compose up` or `podman-compose up` in the repository root to run the Go test will all the capabilities required. A linux system is required for this to work properly.
 
 ## Use Cases
 

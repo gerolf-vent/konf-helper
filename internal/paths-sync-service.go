@@ -388,11 +388,11 @@ func (pss *PathsSyncService) sync() bool {
 			)
 
 			// Prepare file and directory modes
-			var dirMode os.FileMode = 0750
+			var dirMode os.FileMode = 0755
 			var fileMode os.FileMode = 0640
 			if pc.HasMode() {
-				dirMode = os.FileMode(pc.Mode()) & 0500  // At least the owner should be allowed to enter and read the directory
-				fileMode = os.FileMode(pc.Mode()) & 0400 // At least the owner should be allowed to read the file
+				dirMode = os.FileMode(pc.Mode()) | 0511
+				fileMode = os.FileMode(pc.Mode()) | 0400
 			}
 
 			// Set owner and group if specified
@@ -419,7 +419,7 @@ func (pss *PathsSyncService) sync() bool {
 					ok = false
 					continue
 				}
-				dstWriter, err := os.OpenFile(dstFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+				dstWriter, err := os.OpenFile(dstFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 				if err != nil {
 					srcReader.Close()
 					pss.logger.Error("failed to open destination file",

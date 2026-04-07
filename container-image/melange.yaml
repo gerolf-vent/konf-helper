@@ -1,7 +1,7 @@
 package:
   name: konf-helper
-  version: 0.1.0
-  epoch: 0
+  version: 0.0.0  # Automatically determined by GitHub workflow
+  epoch: 0  # Automatically determined by GitHub workflow
   description: Config sidecar for K8s
   target-architecture:
     - all
